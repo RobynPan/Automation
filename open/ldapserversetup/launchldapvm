@@ -1,0 +1,105 @@
+###setuplxcvm
+echo "dn: olcDatabase={1}hdb,cn=config" > finish.ldif
+echo "changetype: modify" >> finish.ldif
+echo "add: olcLimits" >> finish.ldif
+echo "olcLimits: dn.exact=\"cn=admin,dc=conesphere,dc=com\" time.soft=unlimited " >> finish.ldif
+echo "  time.hard=unlimited size.soft=unlimited size.hard=unlimited" >> finish.ldif
+echo "-" >> finish.ldif
+echo "add: olcSyncRepl" >> finish.ldif
+
+echo "first part of finish.ldif done"
+echo "entering i loop..."
+for i in {1..$2} 
+do
+	vmname=$1"LDAP"$i
+	lxc-create -t download -n $vmname -- -d debian -r stretch -a amd64
+	lxc-start -n $vmname
+	lxc-attach -n $vmname -- passwd && apt-get update && apt-get install -y vim sudo python openssh-server sed && sed -i.bak 's/^.*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config 
+	
+	echo "finished creating: "$vmname
+
+	cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
+	lxc-attach -n $vmname -- sed -i 's/olcServerID: X/olcServerID: $i/g' /root/ldapsetup/3changeServerID.ldif
+	echo "successfully added initial serverID"
+
+	echo "olcSyncRepl: rid="$(50+$i)" provider=ldap://"$vmname"/ binddn=\"cn=admin,dc=conesphere,dc=com" >> finish.ldif
+	echo "bindmethod=simple credentials=O4PbIOzA9gvEQ searchbase=\"dc=nodomain\"" >> finish.ldif
+	echo "type=refreshOnly interval=00:00:00:10 retry=\"5 5 300 5\" timeout=1" >> finish.ldif
+	echo "added vm to finish.ldif"
+done
+
+###############create updateIDs file
+
+updateIDmodpart=$((lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//'))
+
+
+echo "dn: cn=config" > 6updateIDs.ldif
+echo "replace: olcServerID" >> 6updateIDs.ldif
+echo $updateIDmodpart >> 6updateIDs.ldif
+
+
+echo "updateIDs.ldif generated"
+##############
+
+################create 8finalize file#####
+
+finalizemodpart=$( lxc-ls --fancy | grep "RUNNING" | grep $1LDAP |sed 's/\([a-zA-Z]*\)\([1-9]\)/newlineXXmarker olcSyncRepl: rid=00\2 provider=ldap:\/\/\1\2\/ binddn="cn=config/;s/config.*/config" newlineXXmarker bindmethod=simple credentials=test newlineXXmarker searchbase=\"cn=config\" type=refreshAndPersist newlineXXmarker retry=\"5 5 300 5\" timeout=1 newlineXXmarker/')
+
+echo "dn: olcDatabase={0}config,cn=config" > 8finalize.ldif
+echo "changetype: modify" >> 8finalize.ldif
+echo "add: olcSyncRepl"  >> 8finalize.ldif
+echo $finalizemodpart | sed 's/newlineXXmarker/\'$'\n/g' >> 8finalize.ldif
+echo "-" >> 8finalize.ldif
+echo "add: olcMirrorMode" >> 8finalize.ldif
+echo "olcMirrorMode: TRUE" >> 8finalize.ldif
+ 
+echo "finalize.ldif generated"
+#############
+
+
+###############finish creating 9finish.ldif
+
+echo "add: olcDbIndex" >> finish.ldif
+echo "olcDbIndex: entryUUID  eq" >> finish.ldif
+echo "-" >> finish.ldif
+echo "add: olcDbIndex" >> finish.ldif
+echo "olcDbIndex: entryCSN  eq" >> finish.ldif
+echo "-" >> finish.ldif
+echo "add: olcMirrorMode" >> finish.ldif
+echo "olcMirrorMode: TRUE" >> finish.ldif
+
+
+echo "completed 9finish.ldif generation"
+################
+
+
+
+
+for j in {1..$2} 
+do
+	#cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
+
+	cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif"
+	cat 5changeRootPW.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/5changeRootPW.ldif"
+	cat 6updateIDs.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/6updateIDs.ldif"
+	cat 7ObjectOverlay.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/7ObjectOverlay.ldif"
+	cat 8finalize.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/8finalize.ldif"
+	cat 9finish.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/9finish.ldif"
+
+
+######################################################
+########execute ldif configs####
+
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/4addsyncmod.ldif
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/5changeRootPW.ldif
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/6updateIDs.ldif
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/7ObjectOverlay.ldif
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/8finalize.ldif
+	lxc-attach -n $1LDAP$j -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/9finish.ldif
+
+	echo "successfully initialized ldap on" $1"LDAP"$j
+done
+
+
+cat 10start.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/10start.ldif"
+lxc-attach -n $1LDAP1 -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/10start.ldif && echo "success!"
