@@ -1,0 +1,2 @@
+apt install libldap-common slapd slapd-dbg smbldap-tools lmdb-utils ldap-utils ldapscripts libldap-2.4-2
+dpkg-reconfigure -plow slapd
