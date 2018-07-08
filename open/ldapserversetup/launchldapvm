@@ -1,36 +1,110 @@
 ###setuplxcvm
-echo "dn: olcDatabase={1}hdb,cn=config" > finish.ldif
+
+
+
+#####start finish.ldif file
+
+echo "dn: olcDatabase={1}mdb,cn=config" > finish.ldif
 echo "changetype: modify" >> finish.ldif
 echo "add: olcLimits" >> finish.ldif
 echo "olcLimits: dn.exact=\"cn=admin,dc=conesphere,dc=com\" time.soft=unlimited " >> finish.ldif
 echo "  time.hard=unlimited size.soft=unlimited size.hard=unlimited" >> finish.ldif
 echo "-" >> finish.ldif
 echo "add: olcSyncRepl" >> finish.ldif
+##########
+
+
 
 echo "first part of finish.ldif done"
 echo "entering i loop..."
-for i in {1..$2} 
+
+
+
+##########start VMs
+
+for (( i=1; i<=$2; i++))
 do
 	vmname=$1"LDAP"$i
 	lxc-create -t download -n $vmname -- -d debian -r stretch -a amd64
-	lxc-start -n $vmname
-	lxc-attach -n $vmname -- passwd && apt-get update && apt-get install -y vim sudo python openssh-server sed && sed -i.bak 's/^.*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config 
+	lxc-start -n $vmname 
+	lxc-attach -n $vmname -- passwd 
+	lxc-attach -n $vmname -- apt-get update &
+	lxc-attach -n $vmname -- apt-get install -y vim sudo python openssh-server sed slapd ldap-utils ldapscripts
+	lxc-attach -n $vmname -- sed -i.bak 's/^.*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config 
+	lxc-attach -n $vmname -- dpkg-reconfigure -plow slapd
 	
-	echo "finished creating: "$vmname
-
+#	echo "finished creating: "$vmname
+	lxc-attach -n $1LDAP$i -- mkdir /root/ldapsetup/
 	cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
 	lxc-attach -n $vmname -- sed -i 's/olcServerID: X/olcServerID: $i/g' /root/ldapsetup/3changeServerID.ldif
-	echo "successfully added initial serverID"
+#	echo "successfully added initial serverID"
 
-	echo "olcSyncRepl: rid="$(50+$i)" provider=ldap://"$vmname"/ binddn=\"cn=admin,dc=conesphere,dc=com" >> finish.ldif
-	echo "bindmethod=simple credentials=O4PbIOzA9gvEQ searchbase=\"dc=nodomain\"" >> finish.ldif
-	echo "type=refreshOnly interval=00:00:00:10 retry=\"5 5 300 5\" timeout=1" >> finish.ldif
-	echo "added vm to finish.ldif"
+	echo "olcSyncRepl: rid="$((50+$i))" provider=ldap://"$vmname"/ binddn=\"cn=admin,dc=conesphere,dc=com\"" >> finish.ldif
+	echo "   bindmethod=simple credentials=test searchbase=\"dc=conesphere,dc=com\"" >> finish.ldif
+	echo "   type=refreshOnly interval=00:00:00:10 retry=\"5 5 300 5\" timeout=1" >> finish.ldif
+
+#	echo "added vm to finish.ldif"
 done
+#echo "success score is: " $successus
+
+
+
+
+
+
+
+
+############this part is still very much a mess:####
+
+
+
+
+#####start hosts life
+
+echo "127.0.0.1       localhost" > /home/robynpan/potentialhosts
+echo "::1             localhost ip6-localhost ip6-loopback"  >> /home/robynpan/potentialhosts
+echo "ff02::1         ip6-allnodes" >> /home/robynpan/potentialhosts
+echo "ff02::2         ip6-allrouters" >> /home/robynpan/potentialhosts
+#########
+
+
+lxc-ls --fancy | grep "RUNNING" | grep "LDAP" sed 's/       RUNNING 0         -//' | sed 's/-//' | sed 's/^\([^ ]*\) \([^:]*\)/\2 \1/' | sed 's/^ *//' | sed 's/ .*/&.conesphere.com &/' > vmvariables
+
+####################Set slapdservices
+
+slapdIPs=$( lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' )
+
+echo "slapdIPs="$slapdIPs >> vmvariables
+
+cat 2slapdIPs | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/2slapdIPs"
+lxc-attach -n $vmname -- source /root/ldapsetup/2slapdIPs && sed /SLAPD_SERVICES=\"/SLAPD_SERVICES=\"$slapdIPs\"/
+##########
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ###############create updateIDs file
 
-updateIDmodpart=$((lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//'))
+updateIDmodpart=$(lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//')
 
 
 echo "dn: cn=config" > 6updateIDs.ldif
@@ -59,6 +133,7 @@ echo "finalize.ldif generated"
 
 ###############finish creating 9finish.ldif
 
+echo "-" >> finish.ldif
 echo "add: olcDbIndex" >> finish.ldif
 echo "olcDbIndex: entryUUID  eq" >> finish.ldif
 echo "-" >> finish.ldif
@@ -75,16 +150,18 @@ echo "completed 9finish.ldif generation"
 
 
 
-for j in {1..$2} 
-do
-	#cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
+for (( j=1; j<=$2; j++))
 
-	cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif"
-	cat 5changeRootPW.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/5changeRootPW.ldif"
-	cat 6updateIDs.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/6updateIDs.ldif"
-	cat 7ObjectOverlay.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/7ObjectOverlay.ldif"
-	cat 8finalize.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/8finalize.ldif"
-	cat 9finish.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/9finish.ldif"
+do
+	echo "j = "$j
+	#cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
+	cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif" 
+	#cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif"
+	cat 5changeRootPW.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/5changeRootPW.ldif"
+	cat 6updateIDs.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/6updateIDs.ldif"
+	cat 7ObjectOverlay.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/7ObjectOverlay.ldif"
+	cat 8finalize.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/8finalize.ldif"
+	cat finish.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/9finish.ldif"
 
 
 ######################################################
@@ -101,5 +178,5 @@ do
 done
 
 
-cat 10start.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/10start.ldif"
-lxc-attach -n $1LDAP1 -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/10start.ldif && echo "success!"
+cat 10start.ldif | lxc-attach -n $1LDAP1 -- /bin/sh -c "/bin/cat > /root/ldapsetup/10start.ldif"
+lxc-attach -n $1LDAP1 -- ldapadd -Y EXTERNAL -H ldapi:/// -f /root/ldapsetup/10start.ldif && echo "success!"

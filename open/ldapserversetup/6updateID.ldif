@@ -1,0 +1,6 @@
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 1 ldap://10.0.3.76/
+olcServerID: 2 ldap://10.0.3.134/
+
