@@ -24,6 +24,8 @@ echo "entering i loop..."
 
 for (( i=1; i<=$2; i++))
 do
+	##### create the lxc container and install basic software: ####
+
 	vmname=$1"LDAP"$i
 	lxc-create -t download -n $vmname -- -d debian -r stretch -a amd64
 	lxc-start -n $vmname 
@@ -31,64 +33,56 @@ do
 	lxc-attach -n $vmname -- apt-get update &
 	lxc-attach -n $vmname -- apt-get install -y vim sudo python openssh-server sed slapd ldap-utils ldapscripts
 	lxc-attach -n $vmname -- sed -i.bak 's/^.*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config 
+	lxc-attach -n $vmname -- service sshd restart 
 	lxc-attach -n $vmname -- dpkg-reconfigure -plow slapd
 	
-#	echo "finished creating: "$vmname
+
+	##### make ldap setup directory####
+
+	echo "finished creating: "$vmname
 	lxc-attach -n $1LDAP$i -- mkdir /root/ldapsetup/
+
+	##### send changeServerID to VM and change the ID to reflect the VM###
 	cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
 	lxc-attach -n $vmname -- sed -i 's/olcServerID: X/olcServerID: $i/g' /root/ldapsetup/3changeServerID.ldif
-#	echo "successfully added initial serverID"
+	echo "successfully added initial serverID"
 
+	##### make hosts file and send it to the VM
+	echo "127.0.1.1       "$vmname > 1hostsstart
+	cat hostsbasic >> 1hostsstart
+
+	cat 1hostsstart | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/1hostsstart"
+
+
+
+	###### add this VM to the finish.ldif file which mirrors the Data databank ###
 	echo "olcSyncRepl: rid="$((50+$i))" provider=ldap://"$vmname"/ binddn=\"cn=admin,dc=conesphere,dc=com\"" >> finish.ldif
 	echo "   bindmethod=simple credentials=test searchbase=\"dc=conesphere,dc=com\"" >> finish.ldif
 	echo "   type=refreshOnly interval=00:00:00:10 retry=\"5 5 300 5\" timeout=1" >> finish.ldif
 
 #	echo "added vm to finish.ldif"
 done
-#echo "success score is: " $successus
 
 
 
+##### finish hosts file
 
-
-
-
+lxc-ls --fancy | grep "LDAP" | grep "RUNNING" | sed 's/RUNNING.../ /g' | sed 's/^\([^ ]*\) \(.*\) \([^ ]*\)$/\3 \2 \1/' | sed -e 's/-//' -e 's/ //g' -e 's/-/\t/' | cat >> 1hostsend && echo "hosts sed success"
 
 ############this part is still very much a mess:####
 
 
 
 
-#####start hosts life
 
-echo "127.0.0.1       localhost" > /home/robynpan/potentialhosts
-echo "::1             localhost ip6-localhost ip6-loopback"  >> /home/robynpan/potentialhosts
-echo "ff02::1         ip6-allnodes" >> /home/robynpan/potentialhosts
-echo "ff02::2         ip6-allrouters" >> /home/robynpan/potentialhosts
-#########
-
-
-lxc-ls --fancy | grep "RUNNING" | grep "LDAP" sed 's/       RUNNING 0         -//' | sed 's/-//' | sed 's/^\([^ ]*\) \([^:]*\)/\2 \1/' | sed 's/^ *//' | sed 's/ .*/&.conesphere.com &/' > vmvariables
+#lxc-ls --fancy | grep "RUNNING" | grep "LDAP" sed 's/       RUNNING 0         -//' | sed 's/-//' | sed 's/^\([^ ]*\) \([^:]*\)/\2 \1/' | sed 's/^ *//' | sed 's/ .*/&.conesphere.com &/' > vmvariables
 
 ####################Set slapdservices
 
-slapdIPs=$( lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' )
+slapdIPs=$( lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' ) && echo "generated slapdIPs =" $slapdIPs
 
-echo "slapdIPs="$slapdIPs >> vmvariables
 
-cat 2slapdIPs | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/2slapdIPs"
-lxc-attach -n $vmname -- source /root/ldapsetup/2slapdIPs && sed /SLAPD_SERVICES=\"/SLAPD_SERVICES=\"$slapdIPs\"/
 ##########
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -104,15 +98,7 @@ lxc-attach -n $vmname -- source /root/ldapsetup/2slapdIPs && sed /SLAPD_SERVICES
 
 ###############create updateIDs file
 
-updateIDmodpart=$(lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//')
-
-
-echo "dn: cn=config" > 6updateIDs.ldif
-echo "replace: olcServerID" >> 6updateIDs.ldif
-echo $updateIDmodpart >> 6updateIDs.ldif
-
-
-echo "updateIDs.ldif generated"
+updateIDmodpart=$(lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//') && echo "dn: cn=config" > 6updateIDs.ldif && echo "replace: olcServerID" >> 6updateIDs.ldif && echo $updateIDmodpart >> 6updateIDs.ldif && echo "updateIDs.ldif generated"
 ##############
 
 ################create 8finalize file#####
@@ -153,6 +139,18 @@ echo "completed 9finish.ldif generation"
 for (( j=1; j<=$2; j++))
 
 do
+
+	cat 1hostsend | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/1hostsend"
+	
+
+	lxc-attach -n $1LDAP$j -- cat /root/ldapsetup/1hostsstart > /root/ldapsetup/1hosts && cat /root/ldapsetup/1hostsend >> /root/ldapsetup/1hosts
+	lxc-attach -n $1LDAP$j -- mv /root/ldapsetup/1hosts /etc/hosts && echo "placed /etc/hosts file"
+
+
+
+	lxc-attach -n $1LDAP$j -- sed -i 's/SLAPD_SERVICES=\"/SLAPD_SERVICES=\"$slapdIPs\"/' /etc/default/slapd 
+	lxc-attach -n $1LDAP$j -- grep /etc/default/slapd -e "SLAPD_SERVICES"
+	
 	echo "j = "$j
 	#cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
 	cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif" 
