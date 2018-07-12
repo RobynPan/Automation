@@ -1,0 +1,5 @@
+      lxc-start 20180709191941.983 ERROR    lxc_start - start.c:print_top_failing_dir:110 - Permission denied - Could not access /home/robynpan/.local. Please grant it x access, or add an ACL for the container root.
+      lxc-start 20180709191941.983 ERROR    lxc_sync - sync.c:__sync_wait:57 - An error occurred in another process (expected sequence number 3)
+      lxc-start 20180709191941.983 ERROR    lxc_start - start.c:__lxc_start:1530 - Failed to spawn container "testtast".
+      lxc-start 20180709191942.531 ERROR    lxc_start_ui - tools/lxc_start.c:main:368 - The container failed to start.
+      lxc-start 20180709191942.531 ERROR    lxc_start_ui - tools/lxc_start.c:main:372 - Additional information can be obtained by setting the --logfile and --logpriority options.

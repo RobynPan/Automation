@@ -30,12 +30,15 @@ do
 	lxc-create -t download -n $vmname -- -d debian -r stretch -a amd64
 	lxc-start -n $vmname 
 	lxc-attach -n $vmname -- passwd 
-	lxc-attach -n $vmname -- apt-get update &
+	lxc-attach -n $vmname -- apt-get update 
+	lxc-attach -n $vmname -- PATH=$PATH:/sbin/:/usr/sbin:/usr/local/sbin
 	lxc-attach -n $vmname -- apt-get install -y vim sudo python openssh-server sed slapd ldap-utils ldapscripts
 	lxc-attach -n $vmname -- sed -i.bak 's/^.*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config 
 	lxc-attach -n $vmname -- service sshd restart 
 	lxc-attach -n $vmname -- dpkg-reconfigure -plow slapd
-	
+
+		
+		
 
 	##### make ldap setup directory####
 
@@ -79,7 +82,10 @@ lxc-ls --fancy | grep "LDAP" | grep "RUNNING" | sed 's/RUNNING.../ /g' | sed 's/
 
 ####################Set slapdservices
 
-slapdIPs=$( lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' ) && echo "generated slapdIPs =" $slapdIPs
+slapdIPs=$(
+
+
+ lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' ) && echo "generated slapdIPs =" $slapdIPs
 
 
 ##########
