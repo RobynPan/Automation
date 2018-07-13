@@ -50,13 +50,7 @@ do
 	lxc-attach -n $vmname -- sed -i 's/olcServerID: X/olcServerID: $i/g' /root/ldapsetup/3changeServerID.ldif
 	echo "successfully added initial serverID"
 
-	##### make hosts file and send it to the VM
-	echo "127.0.1.1       "$vmname > 1hostsstart
-	cat hostsbasic >> 1hostsstart
-
-	cat 1hostsstart | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/1hostsstart"
-
-
+	
 
 	###### add this VM to the finish.ldif file which mirrors the Data databank ###
 	echo "olcSyncRepl: rid="$((50+$i))" provider=ldap://"$vmname"/ binddn=\"cn=admin,dc=conesphere,dc=com\"" >> finish.ldif
@@ -70,7 +64,7 @@ done
 
 ##### finish hosts file
 
-lxc-ls --fancy | grep "LDAP" | grep "RUNNING" | sed 's/RUNNING.../ /g' | sed 's/^\([^ ]*\) \(.*\) \([^ ]*\)$/\3 \2 \1/' | sed -e 's/-//' -e 's/ //g' -e 's/-/\t/' | cat >> 1hostsend && echo "hosts sed success"
+
 
 ############this part is still very much a mess:####
 
@@ -82,10 +76,7 @@ lxc-ls --fancy | grep "LDAP" | grep "RUNNING" | sed 's/RUNNING.../ /g' | sed 's/
 
 ####################Set slapdservices
 
-slapdIPs=$(
 
-
- lxc-ls --fancy | grep "RUNNING" | grep ldap | sed 's/    RUNNING 0         -      //' | sed 's/ -/\/ /' | sed '/ldap1/d' | sed 's/ldap2/ldap:\/\//' | sed 's/ //g' ) && echo "generated slapdIPs =" $slapdIPs
 
 
 ##########
@@ -143,24 +134,39 @@ echo "completed 9finish.ldif generation"
 
 
 for (( j=1; j<=$2; j++))
-
 do
 
-	cat 1hostsend | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/1hostsend"
-	
 
-	lxc-attach -n $1LDAP$j -- cat /root/ldapsetup/1hostsstart > /root/ldapsetup/1hosts && cat /root/ldapsetup/1hostsend >> /root/ldapsetup/1hosts
-	lxc-attach -n $1LDAP$j -- mv /root/ldapsetup/1hosts /etc/hosts && echo "placed /etc/hosts file"
+#####preparing vmname variables (current vmname and vmname+1)
+vmname=$1LDAP$j
+k=$(($j+1))
+vmname2=$1LDAP$k
+
+
+##### make hosts file and send it to the VM
+	echo "127.0.1.1       "$vmname > 1hosts
+	cat hostsbasic >> 1hosts
+	lxc-ls --fancy | grep "LDAP" | grep "RUNNING" | sed 's/RUNNING.../ /g' | sed 's/^\([^ ]*\) \(.*\) \([^ ]*\)$/\3 \2 \1/' | sed -e 's/-//' -e 's/ //g' -e 's/-/\t/' | cat >> 1hosts && echo "hosts sed success"
+	cat 1hosts | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /etc/hosts" && echo "placed /etc/hosts file"
 
 
 
-	lxc-attach -n $1LDAP$j -- sed -i 's/SLAPD_SERVICES=\"/SLAPD_SERVICES=\"$slapdIPs\"/' /etc/default/slapd 
-	lxc-attach -n $1LDAP$j -- grep /etc/default/slapd -e "SLAPD_SERVICES"
-	
-	echo "j = "$j
-	#cat 3changeServerID.ldif | lxc-attach -n $1LDAP$i -- /bin/sh -c "/bin/cat > /root/ldapsetup/3changeServerID.ldif"
+#SLAPD_SERVICES
+#####isolating the relevant IPs and removing the current VMs IP: print all running VMs, isolate running VMs, isolate LDAP VMs. Remove irrelevant data. echo Data into new line: remove current VMs name and IP from list, (due to bug, second process: if current VM is last in the list, remove it from there). replace VM names with ldap protocol prefix "ldap://". Add port 389 specification (due to similiar issue, repeat this process for last item in the list). Prepare the list for the echo process by nulling all slashes. Lastly, define data in variable from generated file.
+slapdIPs1=$(lxc-ls --fancy | grep "RUNNING" | grep LDAP | sed 's/RUNNING 0         -//' | sed 's/ -/\/ /' )
+echo $slapdIPs1 | sed "s/$vmname.*$vmname2/$vmname2/" | sed "s/$vmname.*\/$//" | sed 's/[a-zA-Z]*LDAP../ldap:\/\//g' | sed 's/\/ /:389\/ /g' | sed 's/\/$/:389\//g' | sed 's/\//\\\\\\\//g'> slapdIPs
+slapdIPs2=$(cat slapdIPs)
+
+#### play variable slapdIPs2 from host into slapdss variable on VM, echo sed process with variable data into new file, and execute.
+        lxc-attach -n $1LDAP$j -- /bin/bash -c "slapdss=\$(echo $slapdIPs2) && echo \"sed -i 's/SLAPD_SERVICES=\\\\\\\"/SLAPD_SERVICES=\\\\\\\"\" \$slapdss \"/' /etc/default/slapd \" > slapdedit"
+       lxc-attach -n $1LDAP$j -- /bin/bash -c "chmod 700 slapdedit && ./slapdedit"
+
+###debug and check the data by uncommenting following line:
+  #      lxc-attach -n $1LDAP$j -- grep /etc/default/slapd -e "SLAPD_SERVICES"
+
+
+########add ldif files to VM
 	cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif" 
-	#cat 4addsyncmod.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/4addsyncmod.ldif"
 	cat 5changeRootPW.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/5changeRootPW.ldif"
 	cat 6updateIDs.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/6updateIDs.ldif"
 	cat 7ObjectOverlay.ldif | lxc-attach -n $1LDAP$j -- /bin/sh -c "/bin/cat > /root/ldapsetup/7ObjectOverlay.ldif"

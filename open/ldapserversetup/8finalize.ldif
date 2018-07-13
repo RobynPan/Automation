@@ -2,17 +2,17 @@ dn: olcDatabase={0}config,cn=config
 changetype: modify
 add: olcSyncRepl
 
- olcSyncRepl: rid=001 provider=ldap://voipLDAP1/ binddn="cn=config" 
+ olcSyncRepl: rid=001 provider=ldap://nextLDAP1/ binddn="cn=config" 
  bindmethod=simple credentials=test 
  searchbase="cn=config" type=refreshAndPersist 
  retry="5 5 300 5" timeout=1 
  
- olcSyncRepl: rid=002 provider=ldap://voipLDAP2/ binddn="cn=config" 
+ olcSyncRepl: rid=002 provider=ldap://nextLDAP2/ binddn="cn=config" 
  bindmethod=simple credentials=test 
  searchbase="cn=config" type=refreshAndPersist 
  retry="5 5 300 5" timeout=1 
  
- olcSyncRepl: rid=003 provider=ldap://voipLDAP3/ binddn="cn=config" 
+ olcSyncRepl: rid=003 provider=ldap://nextLDAP3/ binddn="cn=config" 
  bindmethod=simple credentials=test 
  searchbase="cn=config" type=refreshAndPersist 
  retry="5 5 300 5" timeout=1 
