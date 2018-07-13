@@ -1,0 +1,12 @@
+dn: cn=merlinsgauntlet,ou=people,dc=opensolutions,dc=ie
+objectClass: inetOrgPerson
+uid: joeb
+sn: Bloggs
+givenName: Joe
+cn: merlinsgauntlet
+displayName: Joe Bloggs
+userPassword: testpw124
+mail: joeb@opensolutions.ie
+o: Open Solutions
+title: Chief Coffee Maker
+ou: projects

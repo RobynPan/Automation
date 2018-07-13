@@ -62,40 +62,18 @@ done
 
 
 
-##### finish hosts file
 
 
 
-############this part is still very much a mess:####
+###############create 6updateIDs file
 
+#updateIDmodpart=$(lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//') 
+echo "dn: cn=config" > 6updateIDs.ldif 
+echo "changetype: modify" >> 6updateIDs.ldif
+echo "replace: olcServerID" >> 6updateIDs.ldif 
+lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//' >> 6updateIDs.ldif
 
-
-
-
-#lxc-ls --fancy | grep "RUNNING" | grep "LDAP" sed 's/       RUNNING 0         -//' | sed 's/-//' | sed 's/^\([^ ]*\) \([^:]*\)/\2 \1/' | sed 's/^ *//' | sed 's/ .*/&.conesphere.com &/' > vmvariables
-
-####################Set slapdservices
-
-
-
-
-##########
-
-
-
-
-
-
-
-
-
-
-
-
-
-###############create updateIDs file
-
-updateIDmodpart=$(lxc-ls --fancy | grep "RUNNING" | grep $1LDAP | sed 's/    RUNNING 0         -      / ldap:\/\//' | sed 's/ -//' | sed 's/.*LDAP/olcServerID: /' | sed 's/ *$/\//') && echo "dn: cn=config" > 6updateIDs.ldif && echo "replace: olcServerID" >> 6updateIDs.ldif && echo $updateIDmodpart >> 6updateIDs.ldif && echo "updateIDs.ldif generated"
+#echo $updateIDmodpart >> 6updateIDs.ldif && echo "updateIDs.ldif generated"
 ##############
 
 ################create 8finalize file#####

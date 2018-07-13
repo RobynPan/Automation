@@ -1,0 +1,4 @@
+dn: ou=projects,dc=conesphere,dc=com
+ou: projects
+description: All people in Open Solutions
+objectclass: organizationalUnit

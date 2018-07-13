@@ -1,6 +1,6 @@
 dn: olcDatabase=mdb,cn=config
 objectClass: olcDatabaseConfig
-objectClass: olcHdbConfig
+objectClass: olcMdbConfig
 olcDatabase: mdb
 olcSuffix: dc=conesphere,dc=com
 olcDbDirectory: /var/lib/ldap/conesphere
